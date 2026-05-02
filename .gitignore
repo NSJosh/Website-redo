@@ -1,0 +1,24 @@
+# Local-only — overviews, session logs, scratch notes
+_private/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies (if you ever npm install anything)
+node_modules/
+
+# Env / secrets
+.env
+.env.local
+
+# Build output (if we ever add a build step)
+dist/
+build/
