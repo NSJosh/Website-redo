@@ -8,11 +8,12 @@ window.addEventListener('load', () => {
   // ── Cambodia ──
   const CAMBODIA = { lat: 11.5564, lng: 104.9282 };
 
-  // Camera offset south-east of Cambodia so Cambodia lands in the visible
-  // upper-left of the off-screen-cropped canvas.
-  const BASE_LAT = CAMBODIA.lat - 7;   // ≈ 4.55
-  const BASE_LNG = CAMBODIA.lng + 8;   // ≈ 112.93
-  const ALTITUDE = 1.28;                // closer = bigger Cambodia, more detail
+  // Camera target SW of Cambodia by ~3° each axis — keeps the off-axis
+  // "scanning the horizon" angle while putting Cambodia in the clear right
+  // side of the viewport (away from the headline text on the left).
+  const BASE_LAT = CAMBODIA.lat - 3;    // ≈ 8.55, slight south offset
+  const BASE_LNG = CAMBODIA.lng - 3;    // ≈ 101.93, slight west offset
+  const ALTITUDE = 1.10;                // close to surface, Cambodia bulges
 
   // Cursor parallax range
   const CURSOR_LNG_RANGE = 12;
@@ -34,7 +35,7 @@ window.addEventListener('load', () => {
   const renderer = world.renderer();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 
-  // Hide the underlying globe sphere — surface is rendered via hex polygons
+  // Hide the underlying globe sphere — only the hex polygons are visible
   const mat = world.globeMaterial();
   mat.color.setHex(0xFFFFFF);
   mat.opacity = 0;
@@ -61,12 +62,12 @@ window.addEventListener('load', () => {
     .then(geo => {
       world
         .hexPolygonsData(geo.features)
-        .hexPolygonResolution(4)                    // higher resolution = more, smaller hexes = more detail
-        .hexPolygonMargin(0.22)
-        .hexPolygonAltitude(d => isCambodia(d.properties) ? 0.014 : 0.005)
+        .hexPolygonResolution(4)                    // finer hexes, sharper country shapes
+        .hexPolygonMargin(0.06)                     // tight packing — almost solid surface
+        .hexPolygonAltitude(d => isCambodia(d.properties) ? 0.020 : 0.008)
         .hexPolygonColor(d => isCambodia(d.properties)
-          ? 'rgba(255, 107, 53, 0.9)'
-          : 'rgba(20, 20, 30, 0.42)')
+          ? '#FF6B35'
+          : '#2A2D3A')
         .hexPolygonsTransitionDuration(0);
     })
     .catch(err => console.warn('Country GeoJSON failed', err));
@@ -79,23 +80,18 @@ window.addEventListener('load', () => {
   ctrl.enableRotate = false;
   ctrl.enableDamping = false;
 
-  // ── Lighting + DEPTH FOG (gives the depth-blur futuristic feel) ──
+  // ── Lighting (fog disabled while we diagnose colour issue) ──
   const scene = world.scene();
-
-  // Slightly cool-tinted fog. Globe radius is 100 (three-globe default).
-  // Camera at altitude 1.28 sits ~128 units from origin → front of globe
-  // is ~28 units away, the limb (silhouette tangent) is ~128 units away.
-  // Setting near=70 / far=145 fades the back hexes into haze.
-  scene.fog = new THREE.Fog(0xF4F7FB, 70, 145);
+  scene.fog = null;
 
   scene.traverse(obj => {
     if (obj.isAmbientLight) {
-      obj.intensity = 1.25;
+      obj.intensity = 0.8;
       obj.color.setHex(0xFFFFFF);
     }
     if (obj.isDirectionalLight) {
-      obj.intensity = 0.45;
-      obj.color.setHex(0xFFF2DE);
+      obj.intensity = 0.6;
+      obj.color.setHex(0xFFFFFF);
       obj.position.set(2, 1.4, 1.2);
     }
   });
