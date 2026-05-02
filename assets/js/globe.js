@@ -1,3 +1,4 @@
+import * as THREE from 'https://esm.sh/three@0.160.0';
 import Globe from 'https://esm.sh/globe.gl@2.31.0';
 
 window.addEventListener('load', () => {
@@ -7,71 +8,68 @@ window.addEventListener('load', () => {
   // ── Cambodia ──
   const CAMBODIA = { lat: 11.5564, lng: 104.9282 };
 
-  // Camera offset so Cambodia lands in the visible upper-left of the off-screen canvas
-  const BASE_LAT = CAMBODIA.lat - 9.5;   // ≈ 2.05
-  const BASE_LNG = CAMBODIA.lng + 10.5;  // ≈ 115.43
-  const ALTITUDE = 1.5;
+  // Camera offset south-east of Cambodia so Cambodia lands in the visible
+  // upper-left of the off-screen-cropped canvas.
+  const BASE_LAT = CAMBODIA.lat - 7;   // ≈ 4.55
+  const BASE_LNG = CAMBODIA.lng + 8;   // ≈ 112.93
+  const ALTITUDE = 1.28;                // closer = bigger Cambodia, more detail
 
   // Cursor parallax range
-  const CURSOR_LNG_RANGE = 14;  // ±14° lng
-  const CURSOR_LAT_RANGE = 9;   // ±9° lat
+  const CURSOR_LNG_RANGE = 12;
+  const CURSOR_LAT_RANGE = 8;
 
   // ── Init ──
-  const world = Globe()(container)
+  const world = Globe({
+    rendererConfig: {
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance'
+    }
+  })(container)
     .backgroundColor('rgba(0,0,0,0)')
     .showGlobe(true)
-    .showAtmosphere(true)
-    .atmosphereColor('#FFD9B8')
-    .atmosphereAltitude(0.16)
-    .bumpImageUrl('https://unpkg.com/three-globe@2.31.0/example/img/earth-topology.png');
-
-  // Single small Phnom Penh marker
-  world
-    .pointsData([{ ...CAMBODIA, size: 0.6, color: '#E55A2B' }])
-    .pointAltitude(0.018)
-    .pointRadius('size')
-    .pointColor('color')
-    .pointResolution(32)
-    .pointsMerge(false);
+    .showAtmosphere(false);
 
   // Renderer quality
   const renderer = world.renderer();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 
-  // Globe material — frosted white with topographic bump
+  // Hide the underlying globe sphere — surface is rendered via hex polygons
   const mat = world.globeMaterial();
   mat.color.setHex(0xFFFFFF);
-  mat.emissive.setHex(0xFFFFFF);
-  mat.emissiveIntensity = 0.04;
-  mat.shininess = 4;
-  mat.bumpScale = 9;
+  mat.opacity = 0;
+  mat.transparent = true;
   mat.needsUpdate = true;
 
-  // Country borders + Cambodia highlight
+  // Phnom Penh marker — bright orange dot
+  world
+    .pointsData([{ ...CAMBODIA, size: 0.55, color: '#FF6B35' }])
+    .pointAltitude(0.022)
+    .pointRadius('size')
+    .pointColor('color')
+    .pointResolution(28)
+    .pointsMerge(false);
+
+  // Hex polygons for country surface
   const isCambodia = (props) => {
     const name = props.NAME || props.name || props.NAME_EN || props.ADMIN || '';
     return name === 'Cambodia';
   };
-  const applyPolygons = (features) => {
-    world
-      .polygonsData(features)
-      .polygonCapColor(d => isCambodia(d.properties)
-        ? 'rgba(255, 107, 53, 0.45)'
-        : 'rgba(255, 255, 255, 0.0)')
-      .polygonSideColor(() => 'rgba(0, 0, 0, 0)')
-      .polygonStrokeColor(d => isCambodia(d.properties)
-        ? 'rgba(229, 90, 43, 1.0)'
-        : 'rgba(20, 20, 20, 0.42)')
-      .polygonAltitude(d => isCambodia(d.properties) ? 0.011 : 0.005);
-  };
 
-  fetch('https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_0_countries.geojson')
+  fetch('https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson')
     .then(r => r.json())
-    .then(geo => applyPolygons(geo.features))
-    .catch(() => fetch('https://unpkg.com/three-globe@2.31.0/example/datasets/ne_110m_admin_0_countries.geojson')
-      .then(r => r.json())
-      .then(geo => applyPolygons(geo.features))
-    );
+    .then(geo => {
+      world
+        .hexPolygonsData(geo.features)
+        .hexPolygonResolution(4)                    // higher resolution = more, smaller hexes = more detail
+        .hexPolygonMargin(0.22)
+        .hexPolygonAltitude(d => isCambodia(d.properties) ? 0.014 : 0.005)
+        .hexPolygonColor(d => isCambodia(d.properties)
+          ? 'rgba(255, 107, 53, 0.9)'
+          : 'rgba(20, 20, 30, 0.42)')
+        .hexPolygonsTransitionDuration(0);
+    })
+    .catch(err => console.warn('Country GeoJSON failed', err));
 
   // Disable globe.gl's built-in camera controls — we drive it manually
   const ctrl = world.controls();
@@ -81,21 +79,28 @@ window.addEventListener('load', () => {
   ctrl.enableRotate = false;
   ctrl.enableDamping = false;
 
-  // Lighting tuned for soft frosted look + visible terrain
+  // ── Lighting + DEPTH FOG (gives the depth-blur futuristic feel) ──
   const scene = world.scene();
+
+  // Slightly cool-tinted fog. Globe radius is 100 (three-globe default).
+  // Camera at altitude 1.28 sits ~128 units from origin → front of globe
+  // is ~28 units away, the limb (silhouette tangent) is ~128 units away.
+  // Setting near=70 / far=145 fades the back hexes into haze.
+  scene.fog = new THREE.Fog(0xF4F7FB, 70, 145);
+
   scene.traverse(obj => {
     if (obj.isAmbientLight) {
-      obj.intensity = 1.05;
+      obj.intensity = 1.25;
       obj.color.setHex(0xFFFFFF);
     }
     if (obj.isDirectionalLight) {
-      obj.intensity = 0.85;
+      obj.intensity = 0.45;
       obj.color.setHex(0xFFF2DE);
-      obj.position.set(2, 1.6, 1.4);
+      obj.position.set(2, 1.4, 1.2);
     }
   });
 
-  // Initial camera — open on Cambodia
+  // Initial camera — open framed on Cambodia
   world.pointOfView({ lat: BASE_LAT, lng: BASE_LNG, altitude: ALTITUDE }, 0);
 
   // ── Cursor-driven camera ──
@@ -109,19 +114,21 @@ window.addEventListener('load', () => {
   }, { passive: true });
 
   const SMOOTHING = 0.06;
+  const SETTLE_EPS = 0.01;
   function tick() {
     const targetLat = BASE_LAT - mouseY * CURSOR_LAT_RANGE;
     const targetLng = BASE_LNG + mouseX * CURSOR_LNG_RANGE;
-
-    currentLat += (targetLat - currentLat) * SMOOTHING;
-    currentLng += (targetLng - currentLng) * SMOOTHING;
-
-    world.pointOfView({
-      lat: currentLat,
-      lng: currentLng,
-      altitude: ALTITUDE
-    }, 0);
-
+    const dLat = targetLat - currentLat;
+    const dLng = targetLng - currentLng;
+    if (Math.abs(dLat) > SETTLE_EPS || Math.abs(dLng) > SETTLE_EPS) {
+      currentLat += dLat * SMOOTHING;
+      currentLng += dLng * SMOOTHING;
+      world.pointOfView({
+        lat: currentLat,
+        lng: currentLng,
+        altitude: ALTITUDE
+      }, 0);
+    }
     requestAnimationFrame(tick);
   }
   tick();
