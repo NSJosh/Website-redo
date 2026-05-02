@@ -178,8 +178,8 @@ body {
 /* Globe — bottom-right offscreen bleed, large for zoomed-in feel */
 .hero-globe {
   position: absolute;
-  bottom: -22%;
-  right: -16%;
+  bottom: -37%;
+  right: -27%;
   width: 110vw;
   height: 130vh;
   z-index: 1;
